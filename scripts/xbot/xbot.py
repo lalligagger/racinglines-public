@@ -10,7 +10,8 @@ with POST /v1/inbox/comments/{postId} and commentId). Zernio's /v1/inbox/mention
     python scripts/xbot/xbot.py accounts        # the connected X accounts (read-only)
     python scripts/xbot/xbot.py ask "TEXT"      # draft one answer, print it; nothing is read from or sent to X
     python scripts/xbot/xbot.py once            # one pass: every new comment gets a draft (dry) or a reply (live)
-    python scripts/xbot/xbot.py reply TWEET FILE  # post FILE's text as a reply to TWEET (an id or x.com URL), by hand
+    python scripts/xbot/xbot.py draft TWEET     # draft an answer to TWEET (an id or x.com URL) into drafts/<id>.txt
+    python scripts/xbot/xbot.py reply TWEET [FILE]  # post FILE (default drafts/<id>.txt) as a reply to TWEET, by hand
 
 Settings (env; on the VM /etc/racinglines-xbot.env, read by scripts/vm/xbot.sh):
     ZERNIO_API_KEY, ANTHROPIC_API_KEY   the two keys
@@ -155,6 +156,11 @@ def tags(acct, handle, since_id=None):
     return sorted(zernio("GET", "/twitter/search", q).get("tweets") or [], key=lambda t: int(t["id"]))
 
 
+def lookup(acct, tweet):
+    """One tweet's text and author: GET /v1/twitter/tweet (any age, ~$0.005, needs X analytics on)."""
+    return zernio("GET", "/twitter/tweet", dict(accountId=acct, tweetId=tweet)).get("tweet") or {}
+
+
 def reply_to_tweet(acct, tweet, text):
     """A reply tweet to `tweet` (X allows it on posts that tag us or are ours): POST /v1/posts, published now."""
     return zernio("POST", "/posts", body=dict(content=text, publishNow=True, platforms=[dict(
@@ -284,15 +290,33 @@ def main(argv=None):
             print(a.get("_id"), a.get("username"), "active" if a.get("isActive", True) else "inactive")
     elif cmd == "ask" and len(argv) > 1:
         print(draft(" ".join(argv[1:])) or "SKIP")
-    elif cmd == "reply" and len(argv) == 3:
+    elif cmd == "draft" and len(argv) == 2:
         tweet = tweet_id(argv[1])
-        text = Path(argv[2]).read_text().strip()
+        t = lookup(account_id(), tweet)
+        if not t.get("text"):
+            sys.exit(f"xbot: could not read tweet {tweet}")
+        reply = draft(t["text"], "(they tagged us in their own post)")
+        out = state_dir() / "drafts" / f"{tweet}.txt"
+        out.parent.mkdir(exist_ok=True)
+        out.write_text((reply or "SKIP") + "\n")
+        d, now = state_dir(), datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        seen = load_seen(d)                                  # the timer leaves a hand-drafted tweet to you
+        seen.setdefault(tweet, dict(at=now, action="drafted by hand"))
+        save_seen(d, seen)
+        print(f"@{(t.get('author') or {}).get('username', '?')}: {t['text']}\n---\n{reply or 'SKIP'}\n---\n"
+              f"saved to {out} ({len(reply or '')} chars); post it with: reply {tweet}")
+    elif cmd == "reply" and len(argv) in (2, 3):
+        tweet = tweet_id(argv[1])
+        f = Path(argv[2]) if len(argv) == 3 else state_dir() / "drafts" / f"{tweet}.txt"
+        text = f.read_text().strip()
+        if text.upper() == "SKIP":
+            sys.exit("xbot: the draft is SKIP; nothing to post")
         if not text or len(text) > 280:
             sys.exit(f"xbot: the reply must be 1 to 280 characters, not {len(text)}")
         d = state_dir()
         seen = load_seen(d)
-        if tweet in seen:
-            sys.exit(f"xbot: {tweet} was already handled ({seen[tweet].get('action')})")
+        if (seen.get(tweet) or {}).get("action", "").startswith("replied"):
+            sys.exit(f"xbot: {tweet} was already answered ({seen[tweet]['action']} at {seen[tweet]['at']})")
         out = reply_to_tweet(account_id(), tweet, text)
         seen[tweet] = dict(at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), action="replied by hand")
         save_seen(d, seen)

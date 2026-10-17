@@ -8,7 +8,8 @@
 #   bash scripts/vm/xbot.sh accounts           # the connected X accounts
 #   bash scripts/vm/xbot.sh ask "TEXT"         # draft one answer and print it (nothing read from or sent to X)
 #   bash scripts/vm/xbot.sh once               # one pass in the env file's XBOT_MODE (dry unless it says live)
-#   bash scripts/vm/xbot.sh reply TWEET FILE   # post FILE as a reply to TWEET (id or x.com URL), by hand
+#   bash scripts/vm/xbot.sh draft TWEET        # draft an answer to TWEET (id or x.com URL); nothing is posted
+#   bash scripts/vm/xbot.sh reply TWEET [FILE] # post FILE, or that draft, as a reply to TWEET, by hand
 #   bash scripts/vm/xbot.sh on [MIN]           # a pass every MIN minutes (default 5), transient timer rl-xbot
 #   bash scripts/vm/xbot.sh off | status | log
 #
@@ -35,7 +36,7 @@ case "${1:-}" in
     sudo -u racinglines -H "$STATE/.venv/bin/pip" install -q -r "$APP/scripts/xbot/requirements.txt"
     echo "xbot: venv ready at $STATE/.venv"
     ;;
-  accounts|ask|once|reply)
+  accounts|ask|once|draft|reply)
     run "$@"
     ;;
   on)

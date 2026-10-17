@@ -134,3 +134,22 @@ def test_handles_file_feeds_the_prompt(monkeypatch, tmp_path):
     assert X.system_prompt().endswith("HANDLES:\n(none listed)")
     monkeypatch.delenv("XBOT_HANDLES")
     assert X.system_prompt().endswith("(none listed)")       # the shipped file has no entries
+
+
+def test_draft_then_reply_posts_the_saved_draft(fake, monkeypatch, tmp_path, capsys):
+    real = X.zernio
+
+    def zernio(method, path, query=None, body=None, idempotency_key=None):
+        if path == "/twitter/tweet":
+            return {"tweet": {"id": "901", "text": "@racinglines_bet odds for Max?", "author": {"username": "opticsinspace"}}}
+        return real(method, path, query, body, idempotency_key)
+
+    monkeypatch.setattr(X, "zernio", zernio)
+    monkeypatch.setattr(X, "draft", lambda text, ctx: "Max (@x) is 15% on our model.")
+    X.main(["draft", "https://x.com/opticsinspace/status/901"])
+    assert (tmp_path / "drafts" / "901.txt").read_text() == "Max (@x) is 15% on our model.\n"
+    assert not [c for c in fake if c[0] == "POST"]
+    X.main(["reply", "901"])
+    post = [c for c in fake if c[0] == "POST"][0][2]
+    assert post["content"] == "Max (@x) is 15% on our model."
+    assert post["platforms"][0]["platformSpecificData"]["replyToTweetId"] == "901"
