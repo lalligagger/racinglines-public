@@ -1,0 +1,88 @@
+"""The X reply bot (scripts/xbot/xbot.py) with Zernio and Claude faked: what a pass answers, skips and remembers."""
+
+import importlib.util
+import json
+from pathlib import Path
+
+import pytest
+
+SPEC = importlib.util.spec_from_file_location("xbot", Path(__file__).resolve().parents[1] / "scripts/xbot/xbot.py")
+X = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(X)
+
+POSTS = {"data": [{"id": "p1", "content": "Austin fair odds are up", "commentCount": 2}], "meta": {}}
+COMMENTS = {"comments": [
+    {"id": "c1", "message": "who wins Austin?", "from": {"username": "fan", "isOwner": False},
+     "replies": [{"id": "c2", "message": "thanks!", "from": {"username": "racinglines_bet", "isOwner": True}},
+                 {"id": "c3", "message": "and Vegas?", "from": {"username": "fan2", "isOwner": False}}]},
+    {"id": "c4", "message": "buy my course", "from": {"username": "spam", "isOwner": False}},
+]}
+
+
+@pytest.fixture
+def fake(monkeypatch, tmp_path):
+    calls = []
+
+    def zernio(method, path, query=None, body=None, idempotency_key=None):
+        calls.append((method, path, body, idempotency_key))
+        if path == "/inbox/comments":
+            return POSTS
+        if method == "GET":
+            return COMMENTS
+        return {"success": True, "data": {"commentId": "r"}}
+
+    monkeypatch.setattr(X, "zernio", zernio)
+    monkeypatch.setenv("XBOT_STATE", str(tmp_path))
+    monkeypatch.setenv("XBOT_ACCOUNT_ID", "acc1")
+    monkeypatch.delenv("XBOT_MODE", raising=False)
+    monkeypatch.delenv("XBOT_MAX_REPLIES", raising=False)
+    return calls
+
+
+def write(text, post):
+    return None if "course" in text else f"re: {text}"
+
+
+def test_dry_pass_drafts_everything_new_posts_nothing_and_skips_our_own(fake, tmp_path):
+    assert X.run_once(write=write) == 3
+    assert not [c for c in fake if c[0] == "POST"]
+    rows = [json.loads(l) for l in (tmp_path / "log.jsonl").read_text().splitlines()]
+    assert [(r["comment"], r["action"]) for r in rows] == [("c1", "drafted"), ("c4", "skipped"), ("c3", "drafted")]
+    assert "c2" not in json.loads((tmp_path / "seen.json").read_text())
+
+
+def test_live_pass_replies_once_per_comment_with_an_idempotency_key(fake, monkeypatch):
+    monkeypatch.setenv("XBOT_MODE", "live")
+    X.run_once(write=write)
+    posts = [c for c in fake if c[0] == "POST"]
+    assert [(p[2]["commentId"], p[3]) for p in posts] == [("c1", "xbot-c1"), ("c3", "xbot-c3")]
+    assert posts[0][2] == {"accountId": "acc1", "message": "re: who wins Austin?", "commentId": "c1"}
+    fake.clear()
+    assert X.run_once(write=write) == 0                       # all seen: the second pass answers nothing
+    assert not [c for c in fake if c[0] == "POST"]
+
+
+def test_the_cap_leaves_the_rest_for_the_next_pass(fake, monkeypatch):
+    monkeypatch.setenv("XBOT_MAX_REPLIES", "1")
+    assert X.run_once(write=write) == 1
+    assert X.run_once(write=write) == 1
+    assert sorted(json.loads((Path(X.state_dir()) / "seen.json").read_text())) == ["c1", "c4"]
+
+
+def test_clean_drops_skip_long_and_denied_replies(monkeypatch):
+    monkeypatch.setenv("XBOT_DENY", "Bookname, other")
+    assert X.clean(' "Our model has Norris at 41%." ') == "Our model has Norris at 41%."
+    assert X.clean("SKIP") is None and X.clean("skip") is None and X.clean("") is None
+    assert X.clean("x" * 281) is None
+    assert X.clean("Better odds at bookname tonight") is None
+
+
+def test_the_toolset_is_read_only():
+    assert not set(X.READ_TOOLS) & {"sql", "describe_schema", "data_changes", "run_job", "cancel_job",
+                                    "fantasy_order", "pull_manifest", "pull_chunk", "replay_maker"}
+
+
+def test_bad_mode_stops(fake, monkeypatch):
+    monkeypatch.setenv("XBOT_MODE", "yolo")
+    with pytest.raises(SystemExit):
+        X.run_once(write=write)
