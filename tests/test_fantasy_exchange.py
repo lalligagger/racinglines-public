@@ -135,3 +135,38 @@ def test_alpha_layout_switch(monkeypatch):
     assert not L.hidden("/bookmarks", pro) and not L.hidden("/lively", pro)                     # whole path segments only
     monkeypatch.setenv("RACINGLINES_LAYOUT", "classic")
     assert not L.hidden("/live", pro) and not L.hidden("/book", pro)
+
+
+def test_live_book_reads_each_venue_in_the_recorded_shape():
+    """Kalshi's YES bids and NO bids (a NO bid at p is a YES ask at 1 - p) and Polymarket's CLOB book come back as
+    latest_book's dict(ts, bids, asks), best first; a failed request is None (the order is refused)."""
+    import httpx
+    from racinglines.fantasy import exchange as FX
+
+    def handler(req):
+        if req.url.path.endswith("/orderbook"):
+            return httpx.Response(200, json={"orderbook_fp": {"yes_dollars": [["0.30", "50"], ["0.32", "10"]],
+                                                              "no_dollars": [["0.60", "40"]]}})
+        if req.url.path == "/book":
+            assert req.url.params["token_id"] == "tok1"
+            return httpx.Response(200, json={"timestamp": "1792200000000", "bids": [{"price": "0.40", "size": "5"},
+                                  {"price": "0.41", "size": "7"}], "asks": [{"price": "0.45", "size": "9"}]})
+        return httpx.Response(500)
+    t = httpx.MockTransport(handler)
+    k = FX.live_book("kalshi", "KXF1RACE-26USA-VER", transport=t)
+    assert k["bids"] == [(0.32, 10.0), (0.30, 50.0)] and k["asks"] == [(0.40, 40.0)] and k["ts"].tzinfo
+    p = FX.live_book("polymarket", "tok1", transport=t)
+    assert p["bids"] == [(0.41, 7.0), (0.40, 5.0)] and p["asks"] == [(0.45, 9.0)] and p["ts"].year == 2026
+    assert FX.live_book("polymarket", "other", transport=httpx.MockTransport(lambda r: httpx.Response(503))) is None
+
+
+def test_orders_check_the_live_book_unless_set_to_recorded(monkeypatch):
+    from racinglines.fantasy import exchange as FX
+    calls = []
+    monkeypatch.setattr(FX, "live_book", lambda ex, tok: calls.append((ex, tok)) or "live")
+    monkeypatch.setattr(FX, "latest_book", lambda eng, tok: "recorded")
+    link = dict(exchange="kalshi", token_id="KX1")
+    monkeypatch.setenv("RACINGLINES_FANTASY_BOOKS", "live")
+    assert FX.book_getter(None, link)("KX1") == "live" and calls == [("kalshi", "KX1")]
+    monkeypatch.setenv("RACINGLINES_FANTASY_BOOKS", "recorded")
+    assert FX.book_getter(None, link)("KX1") == "recorded"
