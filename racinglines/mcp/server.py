@@ -429,7 +429,8 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     def fantasy_quote(market_link_id: int, side: str, action: str, shares: int, limit_price: float,
                       user: str | None = None) -> str:
         """What fantasy_order would do with this order right now, without placing it: the fills against the latest
-        recorded book at or better than your limit, the average price, the fee, the total it would cost (a buy) or
+        recorded book (the order itself is checked against the venue's live book, so it can differ) at or better than
+        your limit, the average price, the fee, the total it would cost (a buy) or
         bring (a sale), or the reason it would be refused. Same arguments as fantasy_order; nothing is written."""
         return _read(T.fantasy_quote, market_link_id=market_link_id, side=side, action=action, shares=shares,
                      limit_price=limit_price, user=user, viewer=_viewer(), books=_books())
@@ -438,8 +439,9 @@ def build(jobs_worker=False, engine_url=None, oauth=False):
     def fantasy_order(market_link_id: int, side: str, action: str, shares: int, limit_price: float,
                       client_key: str | None = None, user: str | None = None) -> str:
         """Place one immediate-or-cancel F$ order on your own account, exactly as the Trade page does: side yes|no,
-        action buy|sell, whole shares, limit_price 0.01-0.99. It fills against the latest recorded book (refused past
-        15 minutes old) up to 10 levels at or better than your limit; the rest is cancelled. F$100 per order at most,
+        action buy|sell, whole shares, limit_price 0.01-0.99. It is checked against the venue's live book at that
+        moment (Kalshi or Polymarket; a failed fetch is refused as book_unavailable) and fills up to 10 levels at or
+        better than your limit; the rest is cancelled. F$100 per order at most,
         never more than your cash, never short. Every refusal, the rate limit (10 a minute, 200 a day) included, is
         ok=false with reason and message. client_key makes a retry safe. Nothing reaches an exchange. user: only
         over stdio (the owner naming the account)."""
