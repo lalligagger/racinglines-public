@@ -1,0 +1,48 @@
+# The sale floor on the 2025 holdout (2026-10-16). The sale-floor A/B (golden-probalytics-sellfloor-2026) found that
+# sell_floor = "edge" (no taker sale more than min edge under fair) adds most of profile A's in-sample `update` P&L on
+# both venues. A tuned exit rule needs an out-of-sample check before a decision-log row: the same three 2025 weekends
+# as holdout-2025-late (Las Vegas, Qatar, Abu Dhabi, rounds 22-24, Polymarket only), one change against its jobs:
+#   ours + floor            vs  holdout-2025-late "our tape (old)"
+#   Probalytics ask + floor vs  holdout-2025-late "Probalytics at the ask"
+#
+#   TARGET=staging STAGING_DB=racinglines_staging_demo MODE=search QUEUE=sweeps/holdout-2025-sellfloor.toml \
+#     scripts/vm/overnight.sh   (a transient unit; RACINGLINES_TAPE_SOURCE unset: each job names its tape)
+#
+# Size: 2 jobs x 3 seeds, plus the baseline at 3 seeds = 9 runs. Three weekends is a direction, not a verdict.
+
+[search]
+name = "holdout-2025-sellfloor"
+parallel = 2          # 2 vCPU, niced, beside prod's 5-minute recorders and signals
+grid = 8
+history_cache = true
+hours = 3.0
+grace_minutes = 20
+
+[report]
+target = 2025
+holdout = []
+top = 10
+
+[[job]]
+year = 2025
+rounds = "22-24"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+sell_floor = "edge"
+note = "holdout 2025: profile A, our tape, sale floor edge"
+
+[[job]]
+year = 2025
+rounds = "22-24"
+variant = "gridq+pretrain+reset"
+min_edge = 0.1
+min_edge_h2h = 0.05
+taker_stages = "after FP1,after FP2,after FP3,after SQ,after Sprint,after Quali"
+replicates = 3
+tape_source = "probalytics"
+taker_fill = "touch"
+sell_floor = "edge"
+note = "holdout 2025: profile A, Probalytics at the ask, sale floor edge"
