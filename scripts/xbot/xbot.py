@@ -168,14 +168,27 @@ def lookup(acct, tweet):
     return zernio("GET", "/twitter/tweet", dict(accountId=acct, tweetId=tweet)).get("tweet") or {}
 
 
+def conversation(acct, conversation_id):
+    """The conversation's tweets from the last 7 days, by id: one search (`conversation_id:`), {} if it fails."""
+    try:
+        out = zernio("GET", "/twitter/search", dict(accountId=acct, query=f"conversation_id:{conversation_id}",
+                                                     limit=100, sortOrder="recency"))
+    except RuntimeError as e:
+        print(f"xbot: could not search conversation {conversation_id}: {e}", file=sys.stderr)
+        return {}
+    return {x["id"]: x for x in out.get("tweets") or [] if x.get("id")}
+
+
 def thread_above(acct, t, hops=None):
     """The conversation above tweet `t`, oldest first, as "@user: text" lines: follows inReplyToTweetId up to `hops`
-    tweets (XBOT_THREAD_HOPS, default 4), one lookup each. Empty when `t` is not a reply."""
+    tweets (XBOT_THREAD_HOPS, default 4). One search for the conversation first, then a lookup for any tweet it
+    lacks (the root, or one older than 7 days). Empty when `t` is not a reply."""
     hops = int(os.environ.get("XBOT_THREAD_HOPS", "4")) if hops is None else hops
     lines, parent = [], t.get("inReplyToTweetId")
+    known = conversation(acct, t["conversationId"]) if parent and hops and t.get("conversationId") else {}
     while parent and len(lines) < hops:
         try:
-            p = lookup(acct, parent)
+            p = known.get(parent) or lookup(acct, parent)
         except RuntimeError as e:                     # deleted, protected or unreadable: draft with what we have
             print(f"xbot: could not read tweet {parent} above {t.get('id')}: {e}", file=sys.stderr)
             break
@@ -354,7 +367,8 @@ def run_once(mode=None, write=draft):
 def tag_item(t):
     return dict(kind="tag", id=t["id"], text=t["text"], user=(t.get("author") or {}).get("username") or "",
                 url=f"https://x.com/i/status/{t['id']}",
-                tweet=dict(id=t["id"], inReplyToTweetId=t.get("inReplyToTweetId")))
+                tweet=dict(id=t["id"], inReplyToTweetId=t.get("inReplyToTweetId"),
+                           conversationId=t.get("conversationId")))
 
 
 def editor():
@@ -375,7 +389,8 @@ def review(ask=input, edit=None, write=None):
     if not pending:
         print("xbot: nothing pending")
         return 0
-    acct, posted = account_id(), 0
+    a, posted = account(), 0
+    acct, handle = a["_id"], os.environ.get("XBOT_HANDLE") or a.get("username", "").lstrip("@")
     for i, (cid, item) in enumerate(sorted(pending.items(), key=lambda kv: kv[1].get("queued", 0)), 1):
         f = Path(item["file"])
         while True:
@@ -388,11 +403,15 @@ def review(ask=input, edit=None, write=None):
                 edit(str(f))
                 continue
             if choice == "r":
-                if item["kind"] == "tag" and "tweet" not in item:      # queued before threads were read
-                    t = lookup(acct, cid)
-                    item["tweet"] = dict(id=cid, inReplyToTweetId=t.get("inReplyToTweetId"))
-                item["context"] = context_for(acct, item)
-                queue(d, item, (write or draft)(item["text"], item["context"]))
+                try:
+                    if item["kind"] == "tag" and not (item.get("tweet") or {}).get("conversationId"):
+                        found = [t for t in tags(acct, handle) if t["id"] == cid]    # the search has the thread ids
+                        item["tweet"] = tag_item(found[0] if found else lookup(acct, cid))["tweet"]
+                    item["context"] = context_for(acct, item)
+                    queue(d, item, (write or draft)(item["text"], item["context"]))
+                    item = load_pending(d)[cid]
+                except RuntimeError as e:
+                    print(f"xbot: redraft failed, the draft is unchanged: {e}")
                 continue
             if choice == "a":
                 if not text or text.upper() == "SKIP" or len(text) > 280:

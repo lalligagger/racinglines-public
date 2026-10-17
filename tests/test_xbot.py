@@ -232,3 +232,35 @@ def test_review_redraft_reads_the_thread_again(fake, monkeypatch, tmp_path):
     X.review(ask=lambda _: next(answers), write=lambda text, ctx: f"redrafted with {ctx}")
     assert (tmp_path / "drafts" / "c1.txt").read_text() == "redrafted with @yippeeosc: Norris 41%\n"
     assert not [c for c in fake if c[0] == "POST"]
+
+
+def test_the_thread_comes_from_one_conversation_search_and_a_lookup_only_for_the_root(fake, monkeypatch):
+    calls = []
+
+    def zernio(method, path, query=None, body=None, idempotency_key=None):
+        calls.append((path, query.get("query") or query.get("tweetId")))
+        if path == "/twitter/search":
+            return {"tweets": [{"id": "898", "text": "Norris 41%?", "author": {"username": "yippeeosc"},
+                                "inReplyToTweetId": "897"}]}
+        if query["tweetId"] == "897":
+            return {"tweet": {"id": "897", "text": "who wins?", "author": {"username": "fan"}}}
+        raise RuntimeError("Zernio GET /twitter/tweet: HTTP 404")
+
+    monkeypatch.setattr(X, "zernio", zernio)
+    t = {"id": "900", "inReplyToTweetId": "898", "conversationId": "897"}
+    assert X.thread_above("acc1", t) == ["@fan: who wins?", "@yippeeosc: Norris 41%?"]
+    assert calls == [("/twitter/search", "conversation_id:897"), ("/twitter/tweet", "897")]
+    assert X.thread_above("acc1", {"id": "901", "inReplyToTweetId": "deleted"}) == []   # a 404 is not a crash
+
+
+def test_redraft_of_a_deleted_tweet_keeps_the_draft_and_review_goes_on(fake, monkeypatch, tmp_path):
+    X.run_once(mode="queue", write=write)
+    monkeypatch.setattr(X, "tags", lambda acct, handle, since_id=None: [])
+    monkeypatch.setattr(X, "lookup", lambda acct, tweet: (_ for _ in ()).throw(RuntimeError("HTTP 404")))
+    pending = json.loads((tmp_path / "pending.json").read_text())
+    for v in pending.values():
+        v.pop("tweet", None)                                   # queued by the older code
+    (tmp_path / "pending.json").write_text(json.dumps(pending))
+    answers = iter(["s", "s", "s", "r", "q"])                     # c1, c4, c3 skipped; redraft tag 899
+    X.review(ask=lambda _: next(answers), write=lambda text, ctx: "never")
+    assert (tmp_path / "drafts" / "899.txt").read_text() == "re: @racinglines_bet hi\n"
