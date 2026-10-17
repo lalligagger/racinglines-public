@@ -8,7 +8,7 @@
 
 {% if sel %}<div class="card accent">
   <h2>{{ sel.group_title or sel.question }}</h2>
-  <p class="muted">{{ sel.event_title or "" }} · {{ sel.exchange|capitalize }} · {{ sel.kind|kind }}{% if sel.group_title and sel.question != sel.group_title %} · {{ sel.question }}{% endif %}</p>
+  <p class="muted">{{ sel.event_title or "" }} · {{ sel.exchange|capitalize }} · {{ sel.kind|kind }}{% if sel.group_title and sel.question != sel.group_title %} · {{ sel.question }}{% endif %}{% if sel.sport_ok %} · {% if sel.closes_at %}closes {{ sel.closes_at|fmt }}{% elif sel.season %}season future, no close{% else %}closing time not known yet{% endif %}{% endif %}</p>
   {% if not sel.sport_ok %}<p class="flash bad" role="status"><b>Fantasy trading is Formula 1 only for now.</b> This {{ (sel.sport or "")|upper }} market can't be traded here; you can follow its prices on <a href="/markets">Markets</a>.</p>
   {% elif not book %}<p>No order book has been recorded for this market yet, so it can't be traded.</p>{% else %}
   <p class="muted">Book recorded {{ book.ts|fmt }} (orders are refused once it is over {{ "%.0f"|format(max_age) }} minutes old). Cash: F${{ "{:,.2f}".format(cash) }}{% if pos %} · you hold {{ "%g"|format(pos.shares) }} {{ pos.side|upper }}, cost F${{ "%.2f"|format(pos.cost) }}{% endif %}.</p>
@@ -27,10 +27,12 @@
     <input type="hidden" name="market_link_id" value="{{ sel.id }}"><input type="hidden" name="client_key" value="{{ client_key }}">
     <label>Action <select name="action"><option value="buy"{{ " selected" if action == "buy" }}>Buy</option><option value="sell"{{ " selected" if action == "sell" }}>Sell</option></select></label>
     <label>Side <select name="side"><option value="yes"{{ " selected" if side == "yes" }}>YES</option><option value="no"{{ " selected" if side == "no" }}>NO</option></select></label>
-    <label>Shares <input name="shares" type="number" min="1" step="1" value="{{ '%g'|format(pos.shares) if pos and action == 'sell' else 10 }}" required></label>
-    <label>Limit price <input name="limit_price" type="number" min="0.01" max="0.99" step="0.01" value="{% set lv = (book.asks if side == 'yes' else book.no_asks) if action == 'buy' else (book.bids if side == 'yes' else book.no_bids) %}{{ '%.2f'|format(lv[0][0]) if lv else '0.50' }}" required></label>
+    <label>Shares <input name="shares" type="number" min="1" step="1" value="{{ shares }}" required></label>
+    <label>Limit price <input name="limit_price" type="number" min="0.01" max="0.99" step="0.01" value="{{ limit_price }}" required></label>
+    <button class="button" type="submit" name="preview" value="1">Preview</button>
     <button class="button primary" type="submit">Place order</button>
   </form>
+  {% if quote %}<p role="status">{% if quote.ok %}<b>If filled now:</b> {{ "buys" if action == "buy" else "sells" }} {{ "%g"|format(quote.filled) }}{% if quote.status == "partial" %} of {{ "%g"|format(quote.shares) }}{% endif %} {{ side|upper }} at an average of {{ "%.3f"|format(quote.avg_price) }}, F${{ "%.2f"|format(quote.notional) }}{% if quote.fee %} plus a fee of F${{ "%.2f"|format(quote.fee) }}{% endif %}: {{ "costs" if action == "buy" else "brings" }} F${{ "%.2f"|format(quote.total) }}{% if quote.status == "partial" %}; the rest isn't on the book at your limit{% endif %}. Book recorded {{ (quote.age_s / 60)|round|int }} min ago.{% else %}<b>If placed now it would be refused:</b> {{ quote.message }}{% endif %}</p>{% endif %}
   <p class="muted">Fills at once against the book at your limit or better, or not at all; whatever isn't on the book is cancelled. Up to F${{ "%.0f"|format(max_stake) }} an order (shares x limit). Kalshi charges its taker fee (7% of C x P x (1 - P), rounded up to the cent, once per order); Polymarket none. Both fees are our assumption until confirmed.</p>{% endif %}
   {% endif %}
 </div>{% endif %}

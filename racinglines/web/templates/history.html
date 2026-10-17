@@ -34,6 +34,20 @@ the last point, marked "now", values open trades at what they would sell for now
 </tr>{% endfor %}</tbody></table></div>
 {% else %}{{ empty("No open trades. Trades you make by hand show here.") }}{% endif %}</div>
 
+<div class="card"><h2>Settled trades <span class="muted">{{ settled|length }}</span></h2>
+{% if settled %}<div class="scroll" data-rows="12"><table>
+<thead><tr><th>Market</th><th>Side</th><th class="num">Shares</th><th class="num">Cost</th><th>Outcome</th><th class="num">Payout</th><th class="num">P&amp;L</th><th>Settled</th></tr></thead>
+<tbody>{% for p in settled %}<tr>
+  <td class="wrap">{{ p.group_title or p.question }}<div class="muted">{{ p.event_title or "" }} · {{ p.exchange|capitalize }}</div></td>
+  <td>{% if p.side %}<span class="pill {{ p.side }}">{{ p.side|upper }}</span>{% else %}–{% endif %}</td>
+  <td class="num">{{ "%g"|format(p.shares) }}</td><td class="num">{{ "%.2f"|format(p.cost) }}</td>
+  <td>{% if p.outcome is none %}{{ p.status }}{% else %}{{ "YES" if p.outcome else "NO" }}{% endif %}</td>
+  <td class="num">{{ "%.2f"|format(p.payout) if p.payout is not none else "–" }}</td><td class="num">{{ pnl(p.pnl) if p.pnl is not none else "–" }}</td>
+  <td>{{ p.settled_at|fmt }}</td>
+</tr>{% endfor %}</tbody></table></div>
+<p class="muted">Each share of the winning side paid F$1 when the market resolved; P&amp;L is the payout less what the shares cost (fees are in your orders).</p>
+{% else %}{{ empty("No settled trades yet. A trade by hand shows here once its market resolves and pays out.") }}{% endif %}</div>
+
 <div class="card"><h2>Orders by hand <span class="muted">{{ orders|length }}</span></h2>
 {% if orders %}<div class="scroll" data-rows="12"><table>
 <thead><tr><th>When</th><th>Market</th><th>Order</th><th class="num">Filled</th><th class="num">Avg price</th><th class="num">Fee</th><th>Result</th></tr></thead>
