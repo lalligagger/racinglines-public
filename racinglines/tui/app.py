@@ -11,6 +11,7 @@ from textual.theme import Theme
 from textual.widgets import Footer, Header, TabbedContent, TabPane
 from textual.widgets._tabbed_content import ContentTabs
 
+from . import layout
 from .backend import Backend
 from .modals import JobScreen, ModelRunScreen, PayloadScreen
 from .panes.athletes import AthletesPane
@@ -65,6 +66,16 @@ class RacinglinesApp(App):
         Binding("r", "refresh", "Refresh"),
         Binding("ctrl+r", "reconnect", "Reconnect"),
         Binding("question_mark", "help", "Keys"),
+        Binding("ctrl+l", "layout_mode", "Layout"),
+        # Layout mode only (check_action): ahead of the focused widget, so arrows resize instead of moving a cursor.
+        *[Binding(key, f"resize('{axis}', {step})", show=False, priority=True) for key, axis, step in (
+            ("left", "h", -5), ("right", "h", 5), ("up", "v", -5), ("down", "v", 5),
+            ("shift+left", "h", -1), ("shift+right", "h", 1), ("shift+up", "v", -1), ("shift+down", "v", 1))],
+        Binding("s", "layout_save", "Save layout", priority=True),
+        Binding("a", "layout_save_as", "Save as", priority=True),
+        Binding("n", "layout_next", "Next layout", priority=True),
+        Binding("x", "layout_reset_tab", "Reset tab", priority=True),
+        Binding("escape", "layout_done", "Done", priority=True),
         *[Binding(str((i + 1) % 10), f"tab('{key}')", label, show=False) for i, (key, label, _) in enumerate(TABS[:10])],
     ]
 
@@ -75,10 +86,15 @@ class RacinglinesApp(App):
         self.settings_user = user
         self.overview: dict | None = None
         self._overview_event = asyncio.Event()
+        self.layouts = layout.Store()
+        self.splits = self.layouts.get(self.layouts.current)
+        self.layout_mode = False
+        self.layout_dirty = False
 
     # ------------------------------------------------------------------ layout
     def compose(self) -> ComposeResult:
         yield Header()
+        yield layout.LayoutBar(id="layout-bar")
         with TabbedContent(id="tabs"):
             for key, label, pane_cls in TABS:
                 with TabPane(label, id=f"tab-{key}"):
@@ -88,6 +104,7 @@ class RacinglinesApp(App):
     async def on_mount(self) -> None:
         self.register_theme(PITWALL)
         self.theme = "pitwall"
+        layout.apply(self, self.splits)
         self.sub_title = f"connecting to {self.backend.label}…"
         self.run_worker(self._connect(), exclusive=True, group="connect", exit_on_error=False)
 
@@ -171,9 +188,90 @@ class RacinglinesApp(App):
     def action_help(self) -> None:
         keys = "  ".join(f"{(i + 1) % 10} {label}" for i, (_, label, _) in enumerate(TABS[:10]))
         self.notify(
-            f"{keys}\nr refresh   ctrl+r reconnect   enter open row   [ ] page   esc back   ctrl+p commands",
+            f"{keys}\nr refresh   ctrl+r reconnect   ctrl+l layout mode   enter open row   [ ] page   esc back   ctrl+p commands",
             title="Keys", timeout=12,
         )
+
+    # ------------------------------------------------------------------ layout mode (layout.py)
+    _LAYOUT_ACTIONS = {"resize", "layout_save", "layout_save_as", "layout_next", "layout_reset_tab", "layout_done"}
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action in self._LAYOUT_ACTIONS:  # off outside layout mode and under a dialog, so the keys type normally
+            return self.layout_mode and self.screen is self.screen_stack[0]
+        return True
+
+    def _tab_splits(self) -> list[layout.Split]:
+        active = (self.query_one("#tabs", TabbedContent).active or "tab-home").removeprefix("tab-")
+        return [s for s in layout.SPLITS if s.tab == active]
+
+    def _show_layout(self) -> None:
+        names = [f"{s.name} {'↔' if s.axis == 'h' else '↕'}" for s in self._tab_splits()]
+        self.query_one("#layout-bar", layout.LayoutBar).show(self.layouts.current, self.layout_dirty, names)
+
+    def action_layout_mode(self) -> None:
+        if self.screen is not self.screen_stack[0]:
+            return
+        self.layout_mode = not self.layout_mode
+        self.screen.set_class(self.layout_mode, "-layout")
+        if self.layout_mode:
+            self._show_layout()
+        elif self.layout_dirty:
+            self.notify("Kept for this session. ctrl+l then s saves it.", title="Layout changed", timeout=6)
+        self.refresh_bindings()
+
+    def action_layout_done(self) -> None:
+        if self.layout_mode:
+            self.action_layout_mode()
+
+    def set_split(self, name: str, pct: float) -> None:
+        self.splits[name] = layout.clamp(pct)
+        self.layout_dirty = True
+        layout.apply(self, self.splits)
+        self._show_layout()
+
+    def action_resize(self, axis: str, step: int) -> None:
+        split = next((s for s in self._tab_splits() if s.axis == axis), None)
+        if split is None:
+            return
+        now = self.splits.get(split.name) or layout.measure(self, split) or 50
+        self.set_split(split.name, now + step)
+
+    def action_layout_reset_tab(self) -> None:
+        for split in self._tab_splits():
+            self.splits.pop(split.name, None)
+        self.layout_dirty = True
+        layout.apply(self, self.splits)
+        self._show_layout()
+
+    def action_layout_save(self) -> None:
+        if self.layouts.current == layout.DEFAULT:
+            self.action_layout_save_as()
+            return
+        self.layouts.save(self.layouts.current, self.splits)
+        self.layout_dirty = False
+        self.notify(f"Saved to {self.layouts.file}", title=f"Layout {self.layouts.current}", timeout=4)
+        self._show_layout()
+
+    def action_layout_save_as(self) -> None:
+        def saved(name: str | None) -> None:
+            if name:
+                replaced = name in self.layouts.layouts
+                self.layouts.save(name, self.splits)
+                self.layout_dirty = False
+                self.notify(f"{'Replaced' if replaced else 'Saved'} in {self.layouts.file}", title=f"Layout {name}",
+                            timeout=4)
+                self._show_layout()
+
+        self.push_screen(layout.NameScreen(), saved)
+
+    def action_layout_next(self) -> None:
+        names = self.layouts.names()
+        name = names[(names.index(self.layouts.current) + 1) % len(names)]
+        self.layouts.use(name)
+        self.splits = self.layouts.get(name)
+        self.layout_dirty = False
+        layout.apply(self, self.splits)
+        self._show_layout()
 
     def open_ref(self, row: dict[str, Any]) -> None:
         """Open whatever a row points at, using the field names the server actually sends.

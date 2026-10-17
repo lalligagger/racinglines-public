@@ -29,3 +29,7 @@ DataGrid > .datatable--cursor { text-style: bold; }
 .toolbar > Select { max-width: 56; }
 .toolbar > CButton, .toolbar > Button { margin: 0 0 0 1; }
 .form-row { margin: 0 0 1 0; }
+
+/* Layout mode (layout.py): the dividers show only while it is on. */
+Screen.-layout Divider { display: block; }
+Screen.-layout LayoutBar { display: block; }

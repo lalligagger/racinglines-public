@@ -14,6 +14,12 @@ from tui_fixtures import FakeBackend
 SHOTS = os.environ.get("TUI_SHOTS")
 
 
+@pytest.fixture(autouse=True)
+def _no_saved_layouts(tmp_path, monkeypatch):
+    """Never read or write the user's own saved TUI layouts."""
+    monkeypatch.setenv("RACINGLINES_TUI_LAYOUTS", str(tmp_path / "tui-layouts.json"))
+
+
 def shot(app, name):
     if SHOTS:
         os.makedirs(SHOTS, exist_ok=True)

@@ -15,6 +15,7 @@ from textual.widgets import (Button, Collapsible, Input, Label, Select, Selectio
                              TabPane, TextArea)
 
 from .. import fmt
+from ..layout import Divider
 from ..modals import JobScreen, ModelRunScreen, PayloadScreen
 from ..widgets import DataGrid, KeyValues, ObjectView, PagedGrid, rich_kv_table
 from textual.widgets import Select as _Select
@@ -297,6 +298,7 @@ class LabPane(Pane):
                 with Horizontal():
                     yield PagedGrid("list_diagnostics", columns=DIAG_COLS, limit=100,
                                     empty="No diagnostic runs.", id="lab-diag-grid")
+                    yield Divider("lab.diag")
                     with VerticalScroll(id="lab-diag-side"):
                         yield Static("Diagnostic run", classes="section")
                         with Horizontal(classes="toolbar"):

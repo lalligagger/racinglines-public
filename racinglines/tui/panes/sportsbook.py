@@ -7,6 +7,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Input, TextArea
 
+from ..layout import Divider
 from ..widgets import ObjectView
 from .base import Pane
 
@@ -53,6 +54,7 @@ class SportsbookPane(Pane):
         with Horizontal(id="sb-body"):
             with Vertical(id="sb-editor"):
                 yield TextArea(TEMPLATE, id="sb-text", show_line_numbers=True, soft_wrap=False)
+            yield Divider("book.h")
             yield ObjectView(id="sb-result")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
